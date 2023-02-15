@@ -33,9 +33,16 @@ var map_data = []
 @onready var color_rects = $UI/ColorRects
 #@onready var road_btn = $UI/HUD/BuildButtons/MarginContainer/Road
 
+var own_lands = []
+var for_sale_lands = []
+var directions = [Vector2i(0,5),Vector2i(0,-5),Vector2i(5,0),Vector2i(-5,0)]
+
+
+
 func _ready() -> void:
-#	print(buildings_map.get_used_cells(0))
-#	print(_get_atlas_array(_get_atlas(BUILDING_TYPE.ROAD)))
+	
+	
+
 	load_config()
 	if is_first:
 		build_main_hall()
@@ -51,25 +58,44 @@ func _ready() -> void:
 	connect_builder_buttons()
 
 
+func show_lands_for_sale():
+	var all_lands = $Base.get_used_cells(0)
+	for cell in all_lands:
+		if cell.x % 5 == 0 and cell.y % 5 == 0:
+			own_lands.append(cell)
+#	print(own_lands)
+	for l in own_lands:
+		for dir in directions:
+			if (l+dir).x >= 0 and (l+dir).x < 40 and (l+dir).y >= 0 and (l+dir).y < 30 and !own_lands.has(l + dir):
+				for_sale_lands.append(l+dir)
+#	print(for_sale_lands)
+	var for_sale_atlas = _get_atlas_array(_get_atlas($Base,1))
+#	print(for_sale_atlas)
+	for cell in for_sale_lands:
+		for tile in for_sale_atlas:
+			$Base.set_cell(0,cell + tile,1,Vector2i(0,0)+ tile)
+
 func load_config():
 	var content = FileAccess.open("user://config.txt", FileAccess.READ).get_as_text()
 	if int(content) == 0:
 		is_first = false
 
 
+func is_legal_to_place(tile: Vector2i) -> bool:
+	return $Base.get_used_cells(0).has(tile) and get_atlas_type_for_tile($Base,tile) == 0
 
 
 func build_main_hall():
 	# build main hall
 	var main_hall_dict = {}
-	var main_hall_atlas = _get_atlas_array(_get_atlas(BUILDING_TYPE.MAIN_HALL))
+	var main_hall_atlas = _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE.MAIN_HALL))
 	for tile in main_hall_atlas:
-		buildings_map.set_cell(0,Vector2i(15,1) + tile,BUILDING_TYPE.MAIN_HALL,Vector2i(0,0) + tile)
+		buildings_map.set_cell(0,Vector2i(15,0) + tile,BUILDING_TYPE.MAIN_HALL,Vector2i(0,0) + tile)
 		
 	main_hall_dict = {
 				"id": str(Time.get_unix_time_from_system()).split(".")[0],
 				"type": "Main_Hall",
-				"base": Vector2i(15,1),
+				"base": Vector2i(15,0),
 				"level": 1,
 				"atlas": main_hall_atlas,
 				"last_coll": str(Time.get_unix_time_from_system()).split(".")[0]
@@ -81,12 +107,12 @@ func build_main_hall():
 	road_dict = {
 		"id": str(Time.get_unix_time_from_system()).split(".")[0],
 		"type": "Road",
-		"base": Vector2i(17,8),
+		"base": Vector2i(17,7),
 		"level": 1,
 		"atlas": [Vector2i(0,0)],
 		"last_coll": 0
 	}
-	buildings_map.set_cells_terrain_connect(0,[Vector2i(17,8)],0,0,false)
+	buildings_map.set_cells_terrain_connect(0,[Vector2i(17,7)],0,0,false)
 	map_data.append(road_dict)
 	
 	# save mh and road to []
@@ -116,7 +142,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if sell_mode:
 		if event.is_action_pressed("ui_accept"):
 			var current_tile = get_current_tile(get_global_mouse_position())
-			if get_atlas_type_for_tile(current_tile) == BUILDING_TYPE.MAIN_HALL:
+			if get_atlas_type_for_tile(buildings_map,current_tile) == BUILDING_TYPE.MAIN_HALL:
 				print("You can`t!")
 			else:
 				if buildings_map.get_used_cells(0).has(current_tile):
@@ -135,13 +161,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed("ui_accept"):
 			var current_tile = get_current_tile(get_global_mouse_position())
 			if buildings_map.get_used_cells(0).has(current_tile):
-				if get_atlas_type_for_tile(current_tile) == BUILDING_TYPE.ROAD:
+				if get_atlas_type_for_tile(buildings_map,current_tile) == BUILDING_TYPE.ROAD:
 					for entry in map_data:
 						if current_tile == entry["base"]:
 							selling_building("Yes",entry)
 							get_node("UI").set_building_preview(entry["type"], get_global_mouse_position())
 							build_type = entry["type"]
-							$Mesh.visible = true
+#							$Mesh.visible = true
 							drag_mode = true
 				else:
 					for entry in map_data:
@@ -254,6 +280,8 @@ func init_menu_mode(btn):
 			done_btn.visible = true
 		"MoveButton":
 			move_mode = true
+			show_lands_for_sale()
+			$Mesh.visible = true
 			DisplayServer.cursor_set_custom_image(move_cursor)
 			menu.visible = false
 			done_btn.visible = true
@@ -282,10 +310,10 @@ func update_building_preview():
 	var current_tile = get_current_tile(get_global_mouse_position())
 	var tile_pos = buildings_map.map_to_local(current_tile)
 	if build_type != "Road":
-		var build_type_atlas_coords = _get_atlas_array(_get_atlas(BUILDING_TYPE[build_type.to_upper()]))
+		var build_type_atlas_coords = _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE[build_type.to_upper()]))
 		var count_free = 0
 		for tile in build_type_atlas_coords:
-			if get_atlas_type_for_tile(current_tile + tile) == -1:
+			if get_atlas_type_for_tile(buildings_map,current_tile + tile) == -1 and is_legal_to_place(current_tile + tile):
 				count_free += 1
 		if count_free == build_type_atlas_coords.size():
 			$UI.update_building_preview(tile_pos,"33fd146b")
@@ -295,7 +323,7 @@ func update_building_preview():
 			$UI.update_building_preview(tile_pos,"f600039c")
 			build_valid = false
 	else:
-		if get_atlas_type_for_tile(current_tile) == -1:
+		if get_atlas_type_for_tile(buildings_map,current_tile) == -1 and is_legal_to_place(current_tile):
 			$UI.update_building_preview(tile_pos,"33fd146b")
 			build_valid = true
 			build_location = tile_pos
@@ -303,14 +331,15 @@ func update_building_preview():
 			$UI.update_building_preview(tile_pos,"f600039c")
 			build_valid = false
 
-func get_atlas_type_for_tile(tile: Vector2i) -> int:
-	return buildings_map.get_cell_source_id(0, tile)
+func get_atlas_type_for_tile(map: TileMap, tile: Vector2i) -> int:
+	return map.get_cell_source_id(0, tile)
 
 func cancel_drag_mode():
 	$Mesh.visible = false
 	build_valid = false
 	drag_mode = false
 	move_mode = true
+	$Mesh.visible = true
 	done_btn.visible = true
 	get_node("UI/BuildingPreview").queue_free()
 
@@ -325,14 +354,14 @@ func cancel_build_mode():
 func verify_and_build():
 	if build_valid:
 		var dict = {}
-		var building_atlas = [Vector2i(0,0)] if build_type == "Road" else _get_atlas_array(_get_atlas(BUILDING_TYPE[build_type.to_upper()]))
+		var building_atlas = [Vector2i(0,0)] if build_type == "Road" else _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE[build_type.to_upper()]))
 		dict = {
 				"id": str(Time.get_unix_time_from_system()).split(".")[0],
 				"type": build_type,
 				"base": Vector2i(build_location)/32,
 				"level": 1,
 				"atlas": building_atlas,
-				"last_coll": 0 if build_type == "Road" else str(Time.get_unix_time_from_system()).split(".")[0]
+				"last_coll": str(0) if build_type == "Road" else str(Time.get_unix_time_from_system()).split(".")[0]
 			}
 		if build_type == "Road":
 			buildings_map.set_cells_terrain_connect(0,[Vector2i(build_location)/32],0,0,false)
@@ -348,8 +377,8 @@ func connect_builder_buttons():
 		b.pressed.connect(init_build_mode.bind(b))
 
 
-func _get_atlas(type: int):
-	return buildings_map.tile_set.get_source(type)
+func _get_atlas(map: TileMap, type: int):
+	return map.tile_set.get_source(type)
 
 
 func _get_atlas_array(atlas: TileSetAtlasSource) -> Array:
