@@ -9,6 +9,7 @@ enum BUILDING_TYPE{
 }
 
 var is_first = true
+var is_red = false
 
 var build_mode = false
 var sell_mode = false
@@ -111,6 +112,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				cancel_build_mode()
 		if event.is_action_pressed("ui_cancel"):
 			cancel_build_mode()
+
 	if sell_mode:
 		if event.is_action_pressed("ui_accept"):
 			var current_tile = get_current_tile(get_global_mouse_position())
@@ -118,25 +120,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				print("You can`t!")
 			else:
 				if buildings_map.get_used_cells(0).has(current_tile):
-					
-					if get_atlas_type_for_tile(current_tile) == BUILDING_TYPE.ROAD:
-						for entry in map_data:
-							if current_tile == entry["base"]:
-								$UI/HUD/SellContainer/VBoxContainer/Label.text = "Sell "+ entry["type"]+"?"
-								paint_building(entry,Color(1,0,0,0.5))
-								$UI/HUD/SellContainer.visible = true
-								menu.visible = false
-								connect_sell_buttons(entry)
-					else:
-						for entry in map_data:
-							for v in entry["atlas"]:
-								if current_tile == v + entry["base"]:
+					for entry in map_data:
+						for cell in entry["atlas"]:
+							if current_tile == cell + entry["base"]:
+								if !is_red:
 		#							print(typeof(entry))
 									$UI/HUD/SellContainer/VBoxContainer/Label.text = "Sell "+ entry["type"]+"?"
 									paint_building(entry,Color(1,0,0,0.5))
 									$UI/HUD/SellContainer.visible = true
 									menu.visible = false
 									connect_sell_buttons(entry)
+
 	if move_mode:
 		if event.is_action_pressed("ui_accept"):
 			var current_tile = get_current_tile(get_global_mouse_position())
@@ -159,7 +153,10 @@ func _unhandled_input(event: InputEvent) -> void:
 								build_type = entry["type"]
 								$Mesh.visible = true
 								drag_mode = true
+
 	if drag_mode:
+		done_btn.visible = false
+		move_mode = false
 		if build_valid:
 			if event.is_action_pressed("ui_accept"):
 				verify_and_build()
@@ -192,13 +189,11 @@ func selling_building(b_name,b_dict):
 	elif b_name == "No":
 		desactivate_sell_btns()
 
-# NB optimize
+
 func erase_building(dict):
-	if dict["type"] == "Road":
-		buildings_map.erase_cell(0,dict["base"])
-	else:
-		for v in dict["atlas"]:
-			buildings_map.erase_cell(0,v+dict["base"])
+	for cell in dict["atlas"]:
+		buildings_map.erase_cell(0, cell + dict["base"])
+
 
 func desactivate_sell_btns():
 	$UI/HUD/SellContainer.visible = false
@@ -206,25 +201,19 @@ func desactivate_sell_btns():
 	if color_rect_array.size() > 0:
 		for i in color_rect_array:
 			i.queue_free()
+	if is_red:
+		is_red = false
 	disconnect_sell_buttons()
 
-# NB optimize
+
 func paint_building(dict: Dictionary,color):
-	if dict["type"] == "Road":
+	for cell in dict["atlas"]:
 		var cr = ColorRect.new()
 		cr.size = Vector2i(32,32)
-		cr.position = (dict["base"])*32
+		cr.position = (cell + dict["base"])*32
 		cr.modulate = color
-#		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE  # maybe
 		color_rects.add_child(cr)
-	else:
-		for v in dict["atlas"]:
-			var cr = ColorRect.new()
-			cr.size = Vector2i(32,32)
-			cr.position = (v + dict["base"])*32
-			cr.modulate = color
-	#		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE  # maybe
-			color_rects.add_child(cr)
+	is_red = true
 
 
 func load_from_map_data() :
@@ -237,7 +226,6 @@ func load_from_map_data() :
 
 
 func refresh_map():
-	
 	var roads_tiles_array = []
 	for entry in map_data:
 		if entry["type"] == "Road":
@@ -285,38 +273,34 @@ func init_build_mode(type):
 	done_btn.visible = false
 	get_node("UI").set_building_preview(build_type, get_global_mouse_position())
 
+
 func get_current_tile(pos):
 	return buildings_map.local_to_map(pos)
+
 
 func update_building_preview():
 	var current_tile = get_current_tile(get_global_mouse_position())
 	var tile_pos = buildings_map.map_to_local(current_tile)
 	if build_type != "Road":
-#		var build_type_atlas_coords = buildings_map.tile_set.get_pattern(BUILDING_TYPE[build_type.to_upper()]-2).get_used_cells()
-#		var tiles_count = buildings_map.tile_set.get_source(BUILDING_TYPE[build_type.to_upper()]).get_atlas_grid_size()
 		var build_type_atlas_coords = _get_atlas_array(_get_atlas(BUILDING_TYPE[build_type.to_upper()]))
-#		for c in tiles_count.x * tiles_count.y:
-#			var v = buildings_map.tile_set.get_source(BUILDING_TYPE[build_type.to_upper()]).get_tile_id(c)
-#			build_type_atlas_coords.append(v)
-#		print(build_type_atlas_coords)
 		var count_free = 0
 		for tile in build_type_atlas_coords:
 			if get_atlas_type_for_tile(current_tile + tile) == -1:
 				count_free += 1
 		if count_free == build_type_atlas_coords.size():
-			get_node("UI").update_building_preview(tile_pos,"33fd146b")
+			$UI.update_building_preview(tile_pos,"33fd146b")
 			build_valid = true
 			build_location = tile_pos
 		else:
-			get_node("UI").update_building_preview(tile_pos,"f600039c")
+			$UI.update_building_preview(tile_pos,"f600039c")
 			build_valid = false
-	else:  # NB optimize???
+	else:
 		if get_atlas_type_for_tile(current_tile) == -1:
-			get_node("UI").update_building_preview(tile_pos,"33fd146b")
+			$UI.update_building_preview(tile_pos,"33fd146b")
 			build_valid = true
 			build_location = tile_pos
 		else:
-			get_node("UI").update_building_preview(tile_pos,"f600039c")
+			$UI.update_building_preview(tile_pos,"f600039c")
 			build_valid = false
 
 func get_atlas_type_for_tile(tile: Vector2i) -> int:
@@ -326,6 +310,8 @@ func cancel_drag_mode():
 	$Mesh.visible = false
 	build_valid = false
 	drag_mode = false
+	move_mode = true
+	done_btn.visible = true
 	get_node("UI/BuildingPreview").queue_free()
 
 func cancel_build_mode():
@@ -338,44 +324,33 @@ func cancel_build_mode():
 
 func verify_and_build():
 	if build_valid:
+		var dict = {}
+		var building_atlas = [Vector2i(0,0)] if build_type == "Road" else _get_atlas_array(_get_atlas(BUILDING_TYPE[build_type.to_upper()]))
+		dict = {
+				"id": str(Time.get_unix_time_from_system()).split(".")[0],
+				"type": build_type,
+				"base": Vector2i(build_location)/32,
+				"level": 1,
+				"atlas": building_atlas,
+				"last_coll": 0 if build_type == "Road" else str(Time.get_unix_time_from_system()).split(".")[0]
+			}
 		if build_type == "Road":
-			var road_dict = {}
-			road_dict = {
-				"id": str(Time.get_unix_time_from_system()).split(".")[0],
-				"type": build_type,
-				"base": Vector2i(build_location)/32,
-				"level": 1,
-				"atlas": [Vector2i(0,0)],
-				"last_coll": 0
-			}
-			
 			buildings_map.set_cells_terrain_connect(0,[Vector2i(build_location)/32],0,0,false)
-			map_data.append(road_dict)
-			save_to_map_data()
 		else:
-			var b_atlas = _get_atlas_array(_get_atlas(BUILDING_TYPE[build_type.to_upper()]))
-			for tile in b_atlas:
+			for tile in building_atlas:
 				buildings_map.set_cell(0,Vector2i(build_location)/32+tile,BUILDING_TYPE[build_type.to_upper()],Vector2i(0,0)+tile)
-				
-			var b_dict = {}
-			b_dict = {
-				"id": str(Time.get_unix_time_from_system()).split(".")[0],
-				"type": build_type,
-				"base": Vector2i(build_location)/32,
-				"level": 1,
-				"atlas": b_atlas,
-				"last_coll": str(Time.get_unix_time_from_system()).split(".")[0]
-			}
-			map_data.append(b_dict)
-			save_to_map_data()
+		map_data.append(dict)
+		save_to_map_data()
 
 
 func connect_builder_buttons():
 	for b in get_tree().get_nodes_in_group("builder_buttons"):
 		b.pressed.connect(init_build_mode.bind(b))
 
+
 func _get_atlas(type: int):
 	return buildings_map.tile_set.get_source(type)
+
 
 func _get_atlas_array(atlas: TileSetAtlasSource) -> Array:
 	var result = []
@@ -390,6 +365,8 @@ func _on_done_button_pressed() -> void:
 	sell_mode = false
 	move_mode = false
 	build_mode = false
+	drag_mode = false
+	is_red = false
 	$Mesh.visible = false
 	DisplayServer.cursor_set_custom_image(default_cursor)
 	$UI/HUD/BuildButtons.visible = false
