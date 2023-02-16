@@ -10,6 +10,7 @@ enum BUILDING_TYPE{
 
 var is_first = true
 var is_red = false
+var has_lands_preview = false
 
 var build_mode = false
 var sell_mode = false
@@ -59,21 +60,26 @@ func _ready() -> void:
 
 
 func show_lands_for_sale():
-	var all_lands = $Base.get_used_cells(0)
+	var all_lands = $Land.get_used_cells(0)
 	for cell in all_lands:
 		if cell.x % 5 == 0 and cell.y % 5 == 0:
-			own_lands.append(cell)
+			if !own_lands.has(cell):
+				own_lands.append(cell)
 #	print(own_lands)
 	for l in own_lands:
 		for dir in directions:
-			if (l+dir).x >= 0 and (l+dir).x < 40 and (l+dir).y >= 0 and (l+dir).y < 30 and !own_lands.has(l + dir):
-				for_sale_lands.append(l+dir)
+			var c = l + dir
+			if c.x >= 0 and c.x < 40 and c.y >= 0 and c.y < 30 and !own_lands.has(c):
+				if !for_sale_lands.has(c):
+					for_sale_lands.append(c)
 #	print(for_sale_lands)
-	var for_sale_atlas = _get_atlas_array(_get_atlas($Base,1))
+	
+#	var for_sale_atlas = _get_atlas_array(_get_atlas($Land,1))
 #	print(for_sale_atlas)
 	for cell in for_sale_lands:
-		for tile in for_sale_atlas:
-			$Base.set_cell(0,cell + tile,1,Vector2i(0,0)+ tile)
+		$UI.set_lands_for_sale_preview("expansion",(cell)*32)
+#		for tile in for_sale_atlas:
+#			$Land.set_cell(0,cell + tile,1,Vector2i(0,0)+ tile)
 
 func load_config():
 	var content = FileAccess.open("user://config.txt", FileAccess.READ).get_as_text()
@@ -82,7 +88,7 @@ func load_config():
 
 
 func is_legal_to_place(tile: Vector2i) -> bool:
-	return $Base.get_used_cells(0).has(tile) and get_atlas_type_for_tile($Base,tile) == 0
+	return $Land.get_used_cells(0).has(tile) and get_atlas_type_for_tile($Land,tile) == 0
 
 
 func build_main_hall():
@@ -125,6 +131,7 @@ func build_main_hall():
 
 
 func _process(_delta: float) -> void:
+	print(build_type)
 	if build_mode or drag_mode:
 		update_building_preview()
 
@@ -132,6 +139,7 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 #	print(event)
 	if build_mode:
+		$Ground.modulate = Color(1,1,1,0.5)
 		if event.is_action_pressed("ui_accept"):
 			verify_and_build()
 			if build_type != "Road":
@@ -158,6 +166,10 @@ func _unhandled_input(event: InputEvent) -> void:
 									connect_sell_buttons(entry)
 
 	if move_mode:
+		$Ground.modulate = Color(1,1,1,0.5)
+		if !has_lands_preview:
+			show_lands_for_sale()
+			has_lands_preview = true
 		if event.is_action_pressed("ui_accept"):
 			var current_tile = get_current_tile(get_global_mouse_position())
 			if buildings_map.get_used_cells(0).has(current_tile):
@@ -280,7 +292,7 @@ func init_menu_mode(btn):
 			done_btn.visible = true
 		"MoveButton":
 			move_mode = true
-			show_lands_for_sale()
+#			show_lands_for_sale()
 			$Mesh.visible = true
 			DisplayServer.cursor_set_custom_image(move_cursor)
 			menu.visible = false
@@ -299,7 +311,8 @@ func init_build_mode(type):
 	$Mesh.visible = true
 	$UI/HUD/BuildButtons.visible = false
 	done_btn.visible = false
-	get_node("UI").set_building_preview(build_type, get_global_mouse_position())
+	if build_type != "Expansion":
+		get_node("UI").set_building_preview(build_type, get_global_mouse_position())
 
 
 func get_current_tile(pos):
@@ -309,7 +322,10 @@ func get_current_tile(pos):
 func update_building_preview():
 	var current_tile = get_current_tile(get_global_mouse_position())
 	var tile_pos = buildings_map.map_to_local(current_tile)
-	if build_type != "Road":
+	if build_type == "Expansion":
+		move_mode = true
+		build_mode = false
+	elif build_type != "Road":
 		var build_type_atlas_coords = _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE[build_type.to_upper()]))
 		var count_free = 0
 		for tile in build_type_atlas_coords:
@@ -391,11 +407,16 @@ func _get_atlas_array(atlas: TileSetAtlasSource) -> Array:
 
 func _on_done_button_pressed() -> void:
 	#return to menu
+	if has_lands_preview:
+		for l in get_node("UI/LandPreviews").get_children():
+			l.queue_free()
+	$Ground.modulate = Color(1,1,1,1)
 	sell_mode = false
 	move_mode = false
 	build_mode = false
 	drag_mode = false
 	is_red = false
+	has_lands_preview = false
 	$Mesh.visible = false
 	DisplayServer.cursor_set_custom_image(default_cursor)
 	$UI/HUD/BuildButtons.visible = false
