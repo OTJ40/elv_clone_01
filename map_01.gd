@@ -16,6 +16,7 @@ var build_mode = false
 var sell_mode = false
 var move_mode = false
 var drag_mode = false
+var expanse_mode = false
 
 var build_valid = false
 var build_type
@@ -60,6 +61,7 @@ func _ready() -> void:
 
 
 func show_lands_for_sale():
+	$Ground.modulate = Color(1,1,1,0.5)
 	var all_lands = $Land.get_used_cells(0)
 	for cell in all_lands:
 		if cell.x % 5 == 0 and cell.y % 5 == 0:
@@ -80,6 +82,20 @@ func show_lands_for_sale():
 		$UI.set_lands_for_sale_preview("expansion",(cell)*32)
 #		for tile in for_sale_atlas:
 #			$Land.set_cell(0,cell + tile,1,Vector2i(0,0)+ tile)
+
+
+func has_point_in_for_sale_lands(point: Vector2i) -> bool:
+	for pos in for_sale_lands:
+		if Rect2i(pos,Vector2i(5,5)).has_point(point):
+			return true
+	return false
+
+
+func get_rect_for_sale(point: Vector2i):
+	for pos in for_sale_lands:
+		if Rect2i(pos,Vector2i(5,5)).has_point(point):
+			return pos
+
 
 func load_config():
 	var content = FileAccess.open("user://config.txt", FileAccess.READ).get_as_text()
@@ -131,7 +147,7 @@ func build_main_hall():
 
 
 func _process(_delta: float) -> void:
-	print(build_type)
+#	print(build_type)
 	if build_mode or drag_mode:
 		update_building_preview()
 
@@ -144,8 +160,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			verify_and_build()
 			if build_type != "Road":
 				cancel_build_mode()
+				$Ground.modulate = Color(1,1,1,1)
 		if event.is_action_pressed("ui_cancel"):
 			cancel_build_mode()
+			$Ground.modulate = Color(1,1,1,1)
 
 	if sell_mode:
 		if event.is_action_pressed("ui_accept"):
@@ -159,11 +177,12 @@ func _unhandled_input(event: InputEvent) -> void:
 							if current_tile == cell + entry["base"]:
 								if !is_red:
 		#							print(typeof(entry))
-									$UI/HUD/SellContainer/VBoxContainer/Label.text = "Sell "+ entry["type"]+"?"
-									paint_building(entry,Color(1,0,0,0.5))
-									$UI/HUD/SellContainer.visible = true
+									$UI/HUD/DialogContainer/VBoxContainer/Label.text = "Sell "+ entry["type"]+"?"
+									paint_building(entry["atlas"],entry["base"],Color(1,0,0,0.5))
+									$UI/HUD/DialogContainer.visible = true
 									menu.visible = false
-									connect_sell_buttons(entry)
+									var cal = Callable(self,"selling_building")
+									connect_dialog_buttons(entry,cal)
 
 	if move_mode:
 		$Ground.modulate = Color(1,1,1,0.5)
@@ -185,12 +204,14 @@ func _unhandled_input(event: InputEvent) -> void:
 					for entry in map_data:
 						for v in entry["atlas"]:
 							if current_tile == v + entry["base"]:
-								paint_building(entry,Color(0,0,1,0.5))
+								paint_building(entry["atlas"],entry["base"],Color(0,0,1,0.5))
 								selling_building("Yes",entry)
 								get_node("UI").set_building_preview(entry["type"], get_global_mouse_position())
 								build_type = entry["type"]
 								$Mesh.visible = true
 								drag_mode = true
+			elif has_point_in_for_sale_lands(current_tile):
+				print("expanse")
 
 	if drag_mode:
 		done_btn.visible = false
@@ -200,17 +221,38 @@ func _unhandled_input(event: InputEvent) -> void:
 				verify_and_build()
 				cancel_drag_mode()
 
+	if expanse_mode:
+		if event.is_action_pressed("ui_accept"):
+			var current_tile = get_current_tile(get_global_mouse_position())
+			if has_point_in_for_sale_lands(current_tile):
+				var rect_for_sale = get_rect_for_sale(current_tile)
+				var t = _get_atlas_array(_get_atlas($Land, 1))
+				$UI/HUD/DialogContainer/VBoxContainer/Label.text = "Buy Expansion?"
+				paint_building(_get_atlas_array(_get_atlas($Land, 1)),rect_for_sale,Color(0,0,1,0.5))
+				$UI/HUD/DialogContainer.visible = true
+				var callable = Callable(self,"buy_expansion")
+				connect_dialog_buttons({"position": rect_for_sale},callable)
 
-func connect_sell_buttons(b_dict):
-	for b in get_tree().get_nodes_in_group("sell_buttons"):
-		if !b.pressed.is_connected(selling_building):
-			b.pressed.connect(selling_building.bind(b.name,b_dict))
+
+func connect_dialog_buttons(b_dict,func_name):
+	for b in get_tree().get_nodes_in_group("dialog_buttons"):
+		if !b.pressed.is_connected(func_name):
+			b.pressed.connect(func_name.bind(b.name,b_dict))
 
 
-func disconnect_sell_buttons():
-	for b in get_tree().get_nodes_in_group("sell_buttons"):
-		if b.pressed.is_connected(selling_building):
-			b.pressed.disconnect(selling_building)
+func disconnect_dialog_buttons(func_name):
+	for b in get_tree().get_nodes_in_group("dialog_buttons"):
+		if b.pressed.is_connected(func_name):
+			b.pressed.disconnect(func_name)
+
+
+func buy_expansion(b_name,dict):
+	print(b_name,dict)
+	if b_name == "Yes":
+		# paint expansion!!!
+		desactivate_dialog_btns()
+	elif b_name == "No":
+		desactivate_dialog_btns()
 
 
 func selling_building(b_name,b_dict):
@@ -223,9 +265,9 @@ func selling_building(b_name,b_dict):
 		save_to_map_data()
 		load_from_map_data()
 		refresh_map()
-		desactivate_sell_btns()
+		desactivate_dialog_btns()
 	elif b_name == "No":
-		desactivate_sell_btns()
+		desactivate_dialog_btns()
 
 
 func erase_building(dict):
@@ -233,23 +275,31 @@ func erase_building(dict):
 		buildings_map.erase_cell(0, cell + dict["base"])
 
 
-func desactivate_sell_btns():
-	$UI/HUD/SellContainer.visible = false
+func desactivate_dialog_btns():
+	$UI/HUD/DialogContainer.visible = false
 	var color_rect_array = color_rects.get_children()
 	if color_rect_array.size() > 0:
 		for i in color_rect_array:
 			i.queue_free()
 	if is_red:
 		is_red = false
-	disconnect_sell_buttons()
+	
+	var c: Callable
+	if sell_mode:
+		c = Callable(self,"selling_building")
+	if expanse_mode:
+		c = Callable(self,"buy_expansion")
+		
+	disconnect_dialog_buttons(c)
 
 
-func paint_building(dict: Dictionary,color):
-	for cell in dict["atlas"]:
+func paint_building(rects_array: Array,pos: Vector2i,color):
+	for cell in rects_array:
 		var cr = ColorRect.new()
 		cr.size = Vector2i(32,32)
-		cr.position = (cell + dict["base"])*32
+		cr.position = (cell + pos)*32
 		cr.modulate = color
+		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		color_rects.add_child(cr)
 	is_red = true
 
@@ -313,6 +363,10 @@ func init_build_mode(type):
 	done_btn.visible = false
 	if build_type != "Expansion":
 		get_node("UI").set_building_preview(build_type, get_global_mouse_position())
+	else:
+		show_lands_for_sale()
+		expanse_mode = true
+		build_mode = false
 
 
 func get_current_tile(pos):
@@ -323,8 +377,9 @@ func update_building_preview():
 	var current_tile = get_current_tile(get_global_mouse_position())
 	var tile_pos = buildings_map.map_to_local(current_tile)
 	if build_type == "Expansion":
-		move_mode = true
-		build_mode = false
+		show_lands_for_sale()
+#		move_mode = true
+#		build_mode = false
 	elif build_type != "Road":
 		var build_type_atlas_coords = _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE[build_type.to_upper()]))
 		var count_free = 0
@@ -422,7 +477,7 @@ func _on_done_button_pressed() -> void:
 	$UI/HUD/BuildButtons.visible = false
 	menu.visible = true
 	done_btn.visible = false
-	$UI/HUD/SellContainer.visible = false
+	$UI/HUD/DialogContainer.visible = false
 	var color_rect_array = color_rects.get_children()
 	if color_rect_array.size() > 0:
 		for i in color_rect_array:
