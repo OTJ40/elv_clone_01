@@ -29,7 +29,7 @@ var default_cursor
 
 var map_data = []
 
-@onready var buildings_map = $Buildings
+#@onready var buildings_map = $Buildings
 @onready var menu = $UI/HUD/Menu
 @onready var done_btn = $UI/HUD/DoneButton
 @onready var color_rects = $UI/ColorRects
@@ -43,8 +43,6 @@ var directions = [Vector2i(0,5),Vector2i(0,-5),Vector2i(5,0),Vector2i(-5,0)]
 
 func _ready() -> void:
 	
-	
-
 	load_config()
 	if is_first:
 		build_main_hall()
@@ -67,21 +65,17 @@ func show_lands_for_sale():
 		if cell.x % 5 == 0 and cell.y % 5 == 0:
 			if !own_lands.has(cell):
 				own_lands.append(cell)
-#	print(own_lands)
+	
+	for_sale_lands.clear()
 	for l in own_lands:
 		for dir in directions:
 			var c = l + dir
 			if c.x >= 0 and c.x < 40 and c.y >= 0 and c.y < 30 and !own_lands.has(c):
 				if !for_sale_lands.has(c):
 					for_sale_lands.append(c)
-#	print(for_sale_lands)
-	
-#	var for_sale_atlas = _get_atlas_array(_get_atlas($Land,1))
-#	print(for_sale_atlas)
+
 	for cell in for_sale_lands:
-		$UI.set_lands_for_sale_preview("expansion",(cell)*32)
-#		for tile in for_sale_atlas:
-#			$Land.set_cell(0,cell + tile,1,Vector2i(0,0)+ tile)
+		$UI.set_lands_for_sale_preview("expansion",cell * 32)
 
 
 func has_point_in_for_sale_lands(point: Vector2i) -> bool:
@@ -108,11 +102,19 @@ func is_legal_to_place(tile: Vector2i) -> bool:
 
 
 func build_main_hall():
+	own_lands = [
+		Vector2i(15, 0),
+		Vector2i(20, 0),
+		Vector2i(20, 5),
+		Vector2i(15, 5),
+		Vector2i(15, 10),
+		Vector2i(20, 10)
+		]
 	# build main hall
 	var main_hall_dict = {}
-	var main_hall_atlas = _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE.MAIN_HALL))
+	var main_hall_atlas = _get_atlas_array(_get_atlas($Buildings, BUILDING_TYPE.MAIN_HALL))
 	for tile in main_hall_atlas:
-		buildings_map.set_cell(0,Vector2i(15,0) + tile,BUILDING_TYPE.MAIN_HALL,Vector2i(0,0) + tile)
+		$Buildings.set_cell(0,Vector2i(15,0) + tile,BUILDING_TYPE.MAIN_HALL,Vector2i(0,0) + tile)
 		
 	main_hall_dict = {
 				"id": str(Time.get_unix_time_from_system()).split(".")[0],
@@ -120,6 +122,7 @@ func build_main_hall():
 				"base": Vector2i(15,0),
 				"level": 1,
 				"atlas": main_hall_atlas,
+#				"connected": true,
 				"last_coll": str(Time.get_unix_time_from_system()).split(".")[0]
 			}
 	map_data.append(main_hall_dict)
@@ -132,9 +135,10 @@ func build_main_hall():
 		"base": Vector2i(17,7),
 		"level": 1,
 		"atlas": [Vector2i(0,0)],
+#		"connected": true,
 		"last_coll": 0
 	}
-	buildings_map.set_cells_terrain_connect(0,[Vector2i(17,7)],0,0,false)
+	$Buildings.set_cells_terrain_connect(0,[Vector2i(17,7)],0,0,false)
 	map_data.append(road_dict)
 	
 	# save mh and road to []
@@ -168,10 +172,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if sell_mode:
 		if event.is_action_pressed("ui_accept"):
 			var current_tile = get_current_tile(get_global_mouse_position())
-			if get_atlas_type_for_tile(buildings_map,current_tile) == BUILDING_TYPE.MAIN_HALL:
+			if get_atlas_type_for_tile($Buildings,current_tile) == BUILDING_TYPE.MAIN_HALL:
 				print("You can`t!")
 			else:
-				if buildings_map.get_used_cells(0).has(current_tile):
+				if $Buildings.get_used_cells(0).has(current_tile):
 					for entry in map_data:
 						for cell in entry["atlas"]:
 							if current_tile == cell + entry["base"]:
@@ -191,14 +195,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			has_lands_preview = true
 		if event.is_action_pressed("ui_accept"):
 			var current_tile = get_current_tile(get_global_mouse_position())
-			if buildings_map.get_used_cells(0).has(current_tile):
-				if get_atlas_type_for_tile(buildings_map,current_tile) == BUILDING_TYPE.ROAD:
+			if $Buildings.get_used_cells(0).has(current_tile):
+				if get_atlas_type_for_tile($Buildings,current_tile) == BUILDING_TYPE.ROAD:
 					for entry in map_data:
 						if current_tile == entry["base"]:
 							selling_building("Yes",entry)
 							get_node("UI").set_building_preview(entry["type"], get_global_mouse_position())
 							build_type = entry["type"]
-#							$Mesh.visible = true
 							drag_mode = true
 				else:
 					for entry in map_data:
@@ -211,6 +214,7 @@ func _unhandled_input(event: InputEvent) -> void:
 								$Mesh.visible = true
 								drag_mode = true
 			elif has_point_in_for_sale_lands(current_tile):
+				expanse_mode = true
 				print("expanse")
 
 	if drag_mode:
@@ -241,15 +245,22 @@ func connect_dialog_buttons(b_dict,func_name):
 
 
 func disconnect_dialog_buttons(func_name):
-	for b in get_tree().get_nodes_in_group("dialog_buttons"):
-		if b.pressed.is_connected(func_name):
-			b.pressed.disconnect(func_name)
+	print(func_name)
+	if func_name != null:
+		for b in get_tree().get_nodes_in_group("dialog_buttons"):
+			if b.pressed.is_connected(func_name):
+				b.pressed.disconnect(func_name)
 
 
 func buy_expansion(b_name,dict):
-	print(b_name,dict)
 	if b_name == "Yes":
-		# paint expansion!!!
+		$Land.set_pattern(0,dict["position"],$Land.tile_set.get_pattern(0))
+		own_lands.append(dict["position"])
+		save_to_map_data()
+		if has_lands_preview:
+			for l in get_node("UI/LandPreviews").get_children():
+				l.queue_free()
+		show_lands_for_sale()
 		desactivate_dialog_btns()
 	elif b_name == "No":
 		desactivate_dialog_btns()
@@ -272,7 +283,7 @@ func selling_building(b_name,b_dict):
 
 func erase_building(dict):
 	for cell in dict["atlas"]:
-		buildings_map.erase_cell(0, cell + dict["base"])
+		$Buildings.erase_cell(0, cell + dict["base"])
 
 
 func desactivate_dialog_btns():
@@ -284,7 +295,7 @@ func desactivate_dialog_btns():
 	if is_red:
 		is_red = false
 	
-	var c: Callable
+	var c = null
 	if sell_mode:
 		c = Callable(self,"selling_building")
 	if expanse_mode:
@@ -306,27 +317,39 @@ func paint_building(rects_array: Array,pos: Vector2i,color):
 
 func load_from_map_data() :
 	var file = FileAccess.open("user://map_data.txt", FileAccess.READ)
+	var land_file = FileAccess.open("user://land_data.txt", FileAccess.READ)
 	if file != null:
 		var content = file.get_var()
 		if content != null:
 			map_data.clear()
 			map_data.append_array(content)
+	if land_file != null:
+		var content = land_file.get_var()
+		if content != null:
+			own_lands.clear()
+			own_lands.append_array(content)
 
 
 func refresh_map():
+	
+	for l in own_lands:
+		$Land.set_pattern(0,l,$Land.tile_set.get_pattern(0))
+	
 	var roads_tiles_array = []
 	for entry in map_data:
 		if entry["type"] == "Road":
 			roads_tiles_array.append(entry["base"])
 		else:
 			for v in entry["atlas"]:
-				buildings_map.set_cell(0,entry["base"]+v,BUILDING_TYPE[entry["type"].to_upper()],Vector2i(0,0)+v)
-		buildings_map.set_cells_terrain_connect(0,roads_tiles_array,0,0,false)
+				$Buildings.set_cell(0,entry["base"]+v,BUILDING_TYPE[entry["type"].to_upper()],Vector2i(0,0)+v)
+	$Buildings.set_cells_terrain_connect(0,roads_tiles_array,0,0,false)
 
 
 func save_to_map_data():
 	var file = FileAccess.open("user://map_data.txt", FileAccess.WRITE)
+	var land_file = FileAccess.open("user://land_data.txt", FileAccess.WRITE)
 	file.store_var(map_data)
+	land_file.store_var(own_lands)
 
 
 func init_menu_mode(btn):
@@ -362,29 +385,31 @@ func init_build_mode(type):
 	$UI/HUD/BuildButtons.visible = false
 	done_btn.visible = false
 	if build_type != "Expansion":
-		get_node("UI").set_building_preview(build_type, get_global_mouse_position())
+		$UI.set_building_preview(build_type, get_global_mouse_position())
 	else:
 		show_lands_for_sale()
+		has_lands_preview = true
+		done_btn.visible = true
 		expanse_mode = true
 		build_mode = false
 
 
 func get_current_tile(pos):
-	return buildings_map.local_to_map(pos)
+	return $Buildings.local_to_map(pos)
 
 
 func update_building_preview():
 	var current_tile = get_current_tile(get_global_mouse_position())
-	var tile_pos = buildings_map.map_to_local(current_tile)
+	var tile_pos = $Buildings.map_to_local(current_tile)
 	if build_type == "Expansion":
 		show_lands_for_sale()
 #		move_mode = true
 #		build_mode = false
 	elif build_type != "Road":
-		var build_type_atlas_coords = _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE[build_type.to_upper()]))
+		var build_type_atlas_coords = _get_atlas_array(_get_atlas($Buildings, BUILDING_TYPE[build_type.to_upper()]))
 		var count_free = 0
 		for tile in build_type_atlas_coords:
-			if get_atlas_type_for_tile(buildings_map,current_tile + tile) == -1 and is_legal_to_place(current_tile + tile):
+			if get_atlas_type_for_tile($Buildings,current_tile + tile) == -1 and is_legal_to_place(current_tile + tile):
 				count_free += 1
 		if count_free == build_type_atlas_coords.size():
 			$UI.update_building_preview(tile_pos,"33fd146b")
@@ -394,7 +419,7 @@ func update_building_preview():
 			$UI.update_building_preview(tile_pos,"f600039c")
 			build_valid = false
 	else:
-		if get_atlas_type_for_tile(buildings_map,current_tile) == -1 and is_legal_to_place(current_tile):
+		if get_atlas_type_for_tile($Buildings,current_tile) == -1 and is_legal_to_place(current_tile):
 			$UI.update_building_preview(tile_pos,"33fd146b")
 			build_valid = true
 			build_location = tile_pos
@@ -422,23 +447,27 @@ func cancel_build_mode():
 	$UI/HUD/BuildButtons.visible = true
 	done_btn.visible = true
 
+func has_connection_to_main_hall():
+	pass
+
 func verify_and_build():
 	if build_valid:
 		var dict = {}
-		var building_atlas = [Vector2i(0,0)] if build_type == "Road" else _get_atlas_array(_get_atlas(buildings_map, BUILDING_TYPE[build_type.to_upper()]))
+		var building_atlas = [Vector2i(0,0)] if build_type == "Road" else _get_atlas_array(_get_atlas($Buildings, BUILDING_TYPE[build_type.to_upper()]))
 		dict = {
 				"id": str(Time.get_unix_time_from_system()).split(".")[0],
 				"type": build_type,
 				"base": Vector2i(build_location)/32,
 				"level": 1,
 				"atlas": building_atlas,
+#				"connected": has_connection_to_main_hall(),
 				"last_coll": str(0) if build_type == "Road" else str(Time.get_unix_time_from_system()).split(".")[0]
 			}
 		if build_type == "Road":
-			buildings_map.set_cells_terrain_connect(0,[Vector2i(build_location)/32],0,0,false)
+			$Buildings.set_cells_terrain_connect(0,[Vector2i(build_location)/32],0,0,false)
 		else:
 			for tile in building_atlas:
-				buildings_map.set_cell(0,Vector2i(build_location)/32+tile,BUILDING_TYPE[build_type.to_upper()],Vector2i(0,0)+tile)
+				$Buildings.set_cell(0,Vector2i(build_location)/32+tile,BUILDING_TYPE[build_type.to_upper()],Vector2i(0,0)+tile)
 		map_data.append(dict)
 		save_to_map_data()
 
@@ -470,6 +499,7 @@ func _on_done_button_pressed() -> void:
 	move_mode = false
 	build_mode = false
 	drag_mode = false
+	expanse_mode = false
 	is_red = false
 	has_lands_preview = false
 	$Mesh.visible = false
