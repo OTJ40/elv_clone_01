@@ -11,6 +11,12 @@ func set_building_preview(building_type, preview_position):
 	add_child(control, true)
 	move_child(get_node("BuildingPreview"), 0)
 
+func modulate_ui(c):
+#	var c = Color(1,1,1,0.4)
+#	get_parent().modulate = c
+	$LandPreviews.modulate = c
+	$ColoredRectangles.modulate = c
+	$"../Base".modulate = c
 
 func set_lands_for_sale_preview(building_type, preview_position):
 	var drag_building = load("res://scenes/" + building_type.to_lower() + ".tscn").instantiate()
