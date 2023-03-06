@@ -19,25 +19,20 @@ var drag_mode = false
 var expanse_mode = false
 
 var place_valid = false
+
 var build_type
 var build_location
 
 var sell_cursor
 var move_cursor
 var default_cursor
-#var mouse_position
 
 var file_manager: FileManager = FileManager.new()
+
 var buildings_data_array = []
-
-#@onready var buildings_map = $Buildings
-@onready var menu = $UI/HUD/Menu
-#@onready var done_btn = $UI/HUD/DoneButton
-#@onready var color_rects = $UI/ColorRects
-#@onready var road_btn = $UI/HUD/BuildButtons/MarginContainer/Road
-
 var own_lands_array = []
-var for_sale_lands = []
+var for_sale_lands_array = []
+
 var directions = [
 	Vector2i.UP,
 	Vector2i.RIGHT,
@@ -63,41 +58,6 @@ func _ready() -> void:
 	for b in get_tree().get_nodes_in_group("menu_buttons"):
 		b.pressed.connect(init_menu_mode.bind(b))
 	connect_builder_buttons()
-
-
-func show_lands_for_sale():
-#	$Base.modulate = Color(1,1,1,0.5)
-	$UI.modulate_ui(Color(1,1,1,0.4))
-	var all_lands = $Land.get_used_cells(0)
-	for cell in all_lands:
-		if cell.x % 5 == 0 and cell.y % 5 == 0:
-			if !own_lands_array.has(cell):
-				own_lands_array.append(cell)
-	
-	for_sale_lands.clear()
-	for l in own_lands_array:
-		for dir in directions:
-			var c = l + dir*5
-			if c.x >= 0 and c.x < 40 and c.y >= 0 and c.y < 30 and !own_lands_array.has(c):
-				if !for_sale_lands.has(c):
-					for_sale_lands.append(c)
-
-	for cell in for_sale_lands:
-		$UI.set_lands_for_sale_preview("expansion",cell * 32)
-
-
-func has_point_in_for_sale_lands(point: Vector2i) -> bool:
-	for pos in for_sale_lands:
-		if Rect2i(pos,Vector2i(5,5)).has_point(point):
-			return true
-	return false
-
-
-func get_rect_for_sale(point: Vector2i):
-	for pos in for_sale_lands:
-		if Rect2i(pos,Vector2i(5,5)).has_point(point):
-			return pos
-
 
 
 func _process(_delta: float) -> void:
@@ -126,30 +86,28 @@ func _unhandled_input(event: InputEvent) -> void:
 				print("You can`t!")
 			else:
 				if $Buildings.get_used_cells(0).has(current_tile):
-					for entry in buildings_data_array:
-						for cell in entry["atlas"]:
-							if current_tile == cell + entry["base"]:
+					for item in buildings_data_array:
+						for cell in get_atlas_positions_array_from_dims(item["dims"],item["base"]):
+							if current_tile == cell:
 								if !has_painted_building:
-									$UI/HUD/DialogContainer/VBoxContainer/Label.text = "Sell "+ entry["type"]+"?"
-									paint_building(entry["atlas"],entry["base"],Color(1,0,0,0.5))
-									$UI/HUD/DialogContainer.visible = true
-									menu.visible = false
-									var cal = Callable(self,"selling_building")
-									connect_dialog_buttons(entry,cal)
+									$UI/HUD/Dialog/VBoxContainer/Label.text = "Sell "+ item["type"]+"?"
+									paint_building(get_atlas_positions_array_from_dims(item["dims"],item["base"]),Color(1,0,0,0.5))
+									$UI/HUD/Dialog.visible = true
+									$UI/HUD/Menu.visible = false
+									var callable = Callable(self,"erase_building")
+									connect_dialog_buttons(item,callable)
 
 	if move_mode:
-#		$Base.modulate = Color(1,1,1,0.5)
 		if !has_lands_preview:
 			show_lands_for_sale()
 			has_lands_preview = true
 		if event.is_action_released("ui_accept"):
-			
-			var current_cell = get_current_tile(get_global_mouse_position())
+			var current_cell = $Buildings.local_to_map(get_global_mouse_position())
 			if $Buildings.get_used_cells(0).has(current_cell):
 				for item in buildings_data_array:
-					for position in get_atlas_positions_array_from_dims(item["dims"],item["base"]):
-						if current_cell == position:
-							eraselling_building("Yes",item)
+					for pos in get_atlas_positions_array_from_dims(item["dims"],item["base"]):
+						if current_cell == pos:
+							erase_building("Yes",item)
 							$UI.set_building_preview(item["type"], get_global_mouse_position())
 							build_type = item["type"]
 							drag_mode = true
@@ -167,31 +125,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if expanse_mode:
 		if event.is_action_released("ui_accept"):
-			var current_tile = get_current_tile(get_global_mouse_position())
-			if has_point_in_for_sale_lands(current_tile):
-				var rect_for_sale = get_rect_for_sale(current_tile)
-				$UI/HUD/Dialog/VBoxContainer/Label.text = "Buy Expansion?"
-				paint_building(_get_atlas_array(_get_atlas($Land, 1)),rect_for_sale,Color(0,0,1,0.5))
-				$UI/HUD/Dialog.visible = true
-				var callable = Callable(self,"buy_expansion")
-				connect_dialog_buttons({"position": rect_for_sale},callable)
-
-
-
-
-
-func connect_dialog_buttons(b_dict,func_name):
-	for b in get_tree().get_nodes_in_group("dialog_buttons"):
-		if !b.pressed.is_connected(func_name):
-			b.pressed.connect(func_name.bind(b.name,b_dict))
-
-
-func disconnect_dialog_buttons(func_name):
-#	print(func_name)
-	if func_name != null:
-		for b in get_tree().get_nodes_in_group("dialog_buttons"):
-			if b.pressed.is_connected(func_name):
-				b.pressed.disconnect(func_name)
+			if !has_painted_building:
+				var current_tile = $Buildings.local_to_map(get_global_mouse_position())
+				if has_point_in_for_sale_lands(current_tile):
+					var rect_for_sale = get_rect_for_sale(current_tile)
+					$UI/HUD/Dialog/VBoxContainer/Label.text = "Buy Expansion?"
+					paint_building(get_atlas_positions_array_from_dims(Vector2i(5,5),rect_for_sale),Color(0,0,1,0.5))
+					$UI/HUD/Dialog.visible = true
+					var callable = Callable(self,"buy_expansion")
+					connect_dialog_buttons({"position": rect_for_sale},callable)
 
 
 func buy_expansion(btn_name,dict):
@@ -208,23 +150,7 @@ func buy_expansion(btn_name,dict):
 		desactivate_dialog_btns()
 
 
-func eraselling_building(b_name,dict):
-	if b_name == "Yes":
-		buildings_data_array.erase(dict)
-#		erase_building(b_dict)
-		for cell in get_atlas_positions_array_from_dims(dict["dims"],dict["base"]):
-			$Buildings.erase_cell(0, cell)
-		file_manager.save_to_file("buildings_data", buildings_data_array)
-#		load_from_buildings_data_file()
-		update_map()
-		desactivate_dialog_btns()
-	elif b_name == "No":
-		desactivate_dialog_btns()
 
-
-#func erase_building(dict):
-#	for cell in dict["atlas"]:
-#		$Buildings.erase_cell(0, cell + dict["base"])
 
 
 func desactivate_dialog_btns():
@@ -238,66 +164,34 @@ func desactivate_dialog_btns():
 	
 	var c = null
 	if sell_mode:
-		c = Callable(self,"selling_building")
+		c = Callable(self,"erase_building")
 	if expanse_mode:
 		c = Callable(self,"buy_expansion")
 		
 	disconnect_dialog_buttons(c)
 
 
-func paint_building(rects_array: Array,pos: Vector2i,color):
+func paint_building(rects_array: Array,color):
 	for cell in rects_array:
 		var cr = ColorRect.new()
 		cr.size = Vector2i(32,32)
-		cr.position = (cell + pos)*32
+		cr.position = (cell)*32
 		cr.modulate = color
 		cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		$UI/ColoredRectangles.add_child(cr)
 	has_painted_building = true
 
 
-func load_from_buildings_data_file() :
-	
-	var content: Array = file_manager.load_from_file("buildings_data") as Array
-	buildings_data_array.clear()
-	buildings_data_array.append_array(content)
-	
-	content = file_manager.load_from_file("lands_data") as Array
-	own_lands_array.clear()
-	own_lands_array.append_array(content)
-	
-#	var file = FileAccess.open("user://map_data.txt", FileAccess.READ)
-#	var land_file = FileAccess.open("user://land_data.txt", FileAccess.READ)
-#	if file != null:
-#		var content = file.get_var()
-#		if content != null:
-#			buildings_data_array.clear()
-#			buildings_data_array.append_array(content)
-#	if land_file != null:
-#		var content = land_file.get_var()
-#		if content != null:
-#			own_lands_array.clear()
-#			own_lands_array.append_array(content)
-
-
-
-func save_to_map_data():
-	var file = FileAccess.open("user://map_data.txt", FileAccess.WRITE)
-	var land_file = FileAccess.open("user://land_data.txt", FileAccess.WRITE)
-	file.store_var(buildings_data_array)
-	land_file.store_var(own_lands_array)
-
-
 func init_menu_mode(btn):
 	match btn.name:
 		"BuilderButton":
 			$UI/HUD/BuildButtons.visible = true
-			menu.visible = false
+			$UI/HUD/Menu.visible = false
 			$UI/HUD/DoneButton.visible = true
 		"SellButton":
 			DisplayServer.cursor_set_custom_image(sell_cursor)
 			sell_mode = true
-			menu.visible = false
+			$UI/HUD/Menu.visible = false
 			$UI/HUD/DoneButton.visible = true
 		"MoveButton":
 			move_mode = true
@@ -331,18 +225,14 @@ func init_build_mode(type):
 		build_mode = false
 
 
-func get_current_tile(pos):
-	return $Buildings.local_to_map(pos)
-
-
 func update_building_preview():
-	var current_cell = get_current_tile(get_global_mouse_position())
+	var current_cell = $Buildings.local_to_map(get_global_mouse_position())
 	var current_cell_in_px = Vector2i($Buildings.map_to_local(current_cell))
 	
 	var atlas = _get_atlas_array($Buildings.tile_set.get_source(BUILDING_TYPE[build_type.to_upper()])) if build_type != "Road" else [Vector2i(0,0)]
 	var count_cells = 0
 	for cell in atlas:
-		if $Buildings.get_cell_source_id(0,current_cell + cell) == -1 and cell_legal_to_place(current_cell + cell):
+		if $Buildings.get_cell_source_id(0,current_cell + cell) == -1 and is_cell_legal_to_place(current_cell + cell):
 			count_cells += 1
 	if count_cells == atlas.size():
 		$UI.update_building_preview(current_cell_in_px,"33fd146b")
@@ -351,33 +241,7 @@ func update_building_preview():
 	else:
 		$UI.update_building_preview(current_cell_in_px,"f600039c")
 		place_valid = false
-	
-#	if build_type == "Expansion":
-#		show_lands_for_sale()
-#	elif build_type != "Road":
-#		var atlas = _get_atlas_array(_get_atlas($Buildings, BUILDING_TYPE[build_type.to_upper()]))
-#		var count_cells = 0
-#		for cell in atlas:
-#			if $Buildings.get_cell_source_id(0,current_tile + cell) == -1 and is_legal_to_place(current_tile + cell):
-#				count_cells += 1
-#		if count_cells == atlas.size():
-#			$UI.update_building_preview(tile_pos,"33fd146b")
-#			place_valid = true
-#			build_location = tile_pos
-#		else:
-#			$UI.update_building_preview(tile_pos,"f600039c")
-#			place_valid = false
-#	else:
-#		if $Buildings.get_cell_source_id(0,current_tile) == -1 and is_legal_to_place(current_tile):
-#			$UI.update_building_preview(tile_pos,"33fd146b")
-#			place_valid = true
-#			build_location = tile_pos
-#		else:
-#			$UI.update_building_preview(tile_pos,"f600039c")
-#			place_valid = false
 
-#func get_atlas_type_for_tile(map: TileMap, tile: Vector2i) -> int:
-#	return map.get_cell_source_id(0, tile)
 
 func cancel_drag_mode():
 	place_valid = false
@@ -387,6 +251,7 @@ func cancel_drag_mode():
 	$UI/HUD/DoneButton.visible = true
 	get_node("UI/BuildingPreview").queue_free()
 
+
 func cancel_build_mode():
 	$Cells.visible = false
 	place_valid = false
@@ -395,20 +260,20 @@ func cancel_build_mode():
 	$UI/HUD/BuildButtons.visible = true
 	$UI/HUD/DoneButton.visible = true
 
-func has_neighbor_road_connected_to_main_hall(pos):
-	for neighbor in get_neighbors(pos):
-		if get_type_from_buildings_data_array(neighbor) == "Main_Hall":
-			return true
-		elif get_type_from_buildings_data_array(neighbor) == "Road":
-				if get_connected_from_map_data(neighbor):
-					return true
-#			if entry["base"] == neighbor:
-#				if get_type_from_map_data(neighbor) == "Main_Hall":
+#func has_neighbor_road_connected_to_main_hall(pos):
+#	for neighbor in get_neighbors(pos):
+#		if get_type_from_buildings_data_array(neighbor) == "Main_Hall":
+#			return true
+#		elif get_type_from_buildings_data_array(neighbor) == "Road":
+#				if get_connected_from_map_data(neighbor):
 #					return true
-#				elif get_type_from_map_data(neighbor) == "Road":
-#					if entry["connected"]:
-#						return true
-	return false
+##			if entry["base"] == neighbor:
+##				if get_type_from_map_data(neighbor) == "Main_Hall":
+##					return true
+##				elif get_type_from_map_data(neighbor) == "Road":
+##					if entry["connected"]:
+##						return true
+#	return false
 
 
 func get_type_from_buildings_data_array(pos):
@@ -418,25 +283,25 @@ func get_type_from_buildings_data_array(pos):
 				return item["type"]
 
 
-func get_connected_from_map_data(pos):
-	for item in buildings_data_array:
-		if item["type"] == "Road":
-			if item["base"] == pos:
-				return item["connected"]
-	return false
+#func get_connected_from_buildings_data_array(pos):
+#	for item in buildings_data_array:
+#		if item["type"] == "Road":
+#			if item["base"] == pos:
+#				return item["connected"]
+#	return false
 #		for cell in entry["atlas"]:
 #			if cell + entry["base"] == pos:
 #				return entry["connected"]
 
-func has_neighbor_road_connected(base_pos,atlas) -> bool:
-	for cell in atlas:
-		for neighbor in get_neighbors(base_pos+cell):
-			# if n "road" and "connected"
-			
-			if get_type_from_buildings_data_array(neighbor) == "Road":
-				if get_connected_from_map_data(neighbor):
-					return true
-	return false
+#func has_neighbor_road_connected(base_pos,atlas) -> bool:
+#	for cell in atlas:
+#		for neighbor in get_neighbors(base_pos+cell):
+#			# if n "road" and "connected"
+#
+#			if get_type_from_buildings_data_array(neighbor) == "Road":
+#				if get_connected_from_buildings_data_array(neighbor):
+#					return true
+#	return false
 
 
 #func prepare_to_place_dict():
@@ -462,6 +327,78 @@ func has_neighbor_road_connected(base_pos,atlas) -> bool:
 #		check_and_refresh_new_for_mh(Vector2i(build_location)/32,0)
 #	return dict
 
+func erase_building(btn_name,dict):
+#	print(dict)
+	if btn_name == "Yes":
+		
+		buildings_data_array.erase(dict)
+		
+		# if road -> 1 - change neighbor roadtrees from base_pos.
+		#     if roadtree == false -> check all buildings along the roadtree, if they
+		#     has connection to MH.
+		# if MH -> 
+		
+		for cell in get_atlas_positions_array_from_dims(dict["dims"],dict["base"]):
+			$Buildings.erase_cell(0, cell)
+		file_manager.save_to_file("buildings_data", buildings_data_array)
+		
+		desactivate_dialog_btns()
+	elif btn_name == "No":
+		desactivate_dialog_btns()
+
+func collect_all_buildings_along_the_roadtree(road_tree):
+	var result = []
+	for road_pos in road_tree:
+		for n in get_neighbors_for_position(road_pos):
+			if is_type_not_road_or_main_hall(n):
+				var bui = get_item_from_buildings_data_array_by_position(n)
+				if !result.has(bui):
+					result.append(bui)
+	return result
+
+
+
+func get_neighbors_for_building(base_pos,dims):
+	var result = []
+	var pos_array = get_atlas_positions_array_from_dims(dims,base_pos)
+	for pos in pos_array:
+		if pos.x - base_pos.x == 0 or pos.y - base_pos.y == 0 or pos.x - base_pos.x + 1 == dims.x or pos.y - base_pos.y + 1 == dims.y:
+			for n in get_neighbors_for_position(pos):
+				if pos_array.has(n):
+					continue
+				else:
+					if $Land.get_cell_source_id(0,n) >= 0:
+						result.append(n)
+	return result
+
+
+func is_road_connected_to_MH(pos: Vector2i) -> bool:
+	var road_tree = get_road_tree(pos) #[pos]
+#	recursive_collecting_roads(pos, road_tree)
+	for road_pos in road_tree:
+		for n in get_neighbors_for_position(road_pos):
+			if get_type_from_buildings_data_array(n) == "Main_Hall":
+				return true
+	return false
+
+func get_road_tree(pos):
+	var road_tree = [pos]
+	recursive_collecting_roads(pos, road_tree)
+	return road_tree
+
+func recursive_collecting_roads(pos, array):
+	for n in get_neighbors_for_position(pos):
+		if !array.has(n):
+			if get_type_from_buildings_data_array(n) == "Road":
+				array.append(n)
+				recursive_collecting_roads(n, array)
+
+func get_connected_for_building_to_place(dims) -> bool:
+	for n in get_neighbors_for_building(build_location,dims):
+		if get_type_from_buildings_data_array(n) == "Road":
+			if is_road_connected_to_MH(n):
+				return true
+	return false
 
 func place_building():
 	if place_valid:
@@ -470,7 +407,15 @@ func place_building():
 		var dims = Vector2i(1,1) if build_type == "Road" else Vector2i(2,2)
 		if build_type == "Main_Hall":
 			dims = Vector2i(6,7)
-		var connected = true # NB
+		var connected
+		if build_type == "Road":
+			connected = is_road_connected_to_MH(build_location)
+#			print(collect_all_buildings_along_the_roadtree(get_road_tree(build_location)))
+		elif build_type == "Main_Hall":
+			connected = true
+		else:
+			connected = get_connected_for_building_to_place(dims)
+			
 		dict = {
 			"id": str(Time.get_unix_time_from_system()).split(".")[0],
 			"type": build_type,
@@ -523,7 +468,7 @@ func place_building():
 
  
 
-func get_index_from_map_data(pos):
+func get_index_from_buildings_data_array(pos):
 	for i in buildings_data_array.size():
 		if buildings_data_array[i]["base"] == pos:
 			return i
@@ -553,11 +498,11 @@ func _get_atlas_array(atlas: TileSetAtlasSource) -> Array:
 	return result
 
 
-func get_neighbors(pos: Vector2i) -> Array:
-	var result = []
-	for dir in directions:
-		result.append(dir+pos)
-	return result
+#func get_neighbors(pos: Vector2i) -> Array:
+#	var result = []
+#	for dir in directions:
+#		result.append(dir+pos)
+#	return result
 
 func _on_done_button_pressed() -> void:
 	if has_lands_preview:
@@ -636,6 +581,17 @@ func load_config():
 	if content == "not_first_time":
 		is_first_time = false
 
+
+func load_from_buildings_data_file() :
+	var content: Array = file_manager.load_from_file("buildings_data") as Array
+	buildings_data_array.clear()
+	buildings_data_array.append_array(content)
+	
+	content = file_manager.load_from_file("lands_data") as Array
+	own_lands_array.clear()
+	own_lands_array.append_array(content)
+
+
 func update_map():
 	
 	for land in own_lands_array:
@@ -658,8 +614,68 @@ func get_atlas_positions_array_from_dims(dims,base) -> Array:
 			result.append(base + Vector2i(x,y))
 	return result
 
-#func is_legal_to_place(tile: Vector2i) -> bool:
-#	return $Land.get_used_cells(0).has(tile) and $Land.get_cell_source_id(0,tile) == 0
+func get_item_from_buildings_data_array_by_position(pos):
+	for item in buildings_data_array:
+		for cell in get_atlas_positions_array_from_dims(item["dims"],item["base"]):
+			if cell == pos:
+				return item
 
-func cell_legal_to_place(cell: Vector2i) -> bool:
+func get_neighbors_for_position(pos) -> Array:
+	var result = []
+	for dir in directions:
+		result.append(pos + dir)
+	return result
+
+func is_cell_legal_to_place(cell: Vector2i) -> bool:
 	return $Land.get_used_cells(0).has(cell) and $Land.get_cell_source_id(0, cell) == 0
+
+
+func show_lands_for_sale():
+#	$Base.modulate = Color(1,1,1,0.5)
+	$UI.modulate_ui(Color(1,1,1,0.4))
+	var all_lands = $Land.get_used_cells(0)
+	for cell in all_lands:
+		if cell.x % 5 == 0 and cell.y % 5 == 0:
+			if !own_lands_array.has(cell):
+				own_lands_array.append(cell)
+	
+	for_sale_lands_array.clear()
+	for land_base in own_lands_array:
+		for dir in directions:
+			var cell = land_base + dir*5
+			if cell.x >= 0 and cell.x < 40 and cell.y >= 0 and cell.y < 30 and !own_lands_array.has(cell):
+				if !for_sale_lands_array.has(cell):
+					for_sale_lands_array.append(cell)
+
+	for cell in for_sale_lands_array:
+		$UI.set_lands_for_sale_preview("expansion",cell * 32)
+
+
+func has_point_in_for_sale_lands(point: Vector2i) -> bool:
+	for pos in for_sale_lands_array:
+		if Rect2i(pos,Vector2i(5,5)).has_point(point):
+			return true
+	return false
+
+
+func get_rect_for_sale(point: Vector2i):
+	for pos in for_sale_lands_array:
+		if Rect2i(pos,Vector2i(5,5)).has_point(point):
+			return pos
+
+
+func connect_dialog_buttons(b_dict,func_name):
+	for b in get_tree().get_nodes_in_group("dialog_buttons"):
+		if !b.pressed.is_connected(func_name):
+			b.pressed.connect(func_name.bind(b.name,b_dict))
+
+
+func is_type_not_road_or_main_hall(pos : Vector2i) -> bool:
+	return $Buildings.get_cell_source_id(0,pos) > 1
+
+func disconnect_dialog_buttons(func_name):
+#	print(func_name)
+	if func_name != null:
+		for b in get_tree().get_nodes_in_group("dialog_buttons"):
+			if b.pressed.is_connected(func_name):
+				b.pressed.disconnect(func_name)

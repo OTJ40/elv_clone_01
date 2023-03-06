@@ -1,5 +1,7 @@
 extends CanvasLayer
 
+func _ready() -> void:
+	$AnimationPlayer.play("nine")
 
 func set_building_preview(building_type, preview_position):
 	var drag_building = load("res://scenes/" + building_type.to_lower() + ".tscn").instantiate()
