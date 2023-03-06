@@ -327,21 +327,74 @@ func get_type_from_buildings_data_array(pos):
 #		check_and_refresh_new_for_mh(Vector2i(build_location)/32,0)
 #	return dict
 
+func check_and_change_road_tree_after_place_or_erase(dict,bull):
+	# if place -> tree become true
+	# if erase -> tree become false
+	if dict["type"] == "Road" and dict["connected"]:
+			for n in get_neighbors_for_position(dict["base"]):
+				if get_type_from_buildings_data_array(n) == "Road" and !is_road_connected_to_MH(n):
+					var tree = get_road_tree(n)
+					
+#					print(tree)
+					for r in tree:
+						var item = get_item_from_buildings_data_array_by_position(r)
+						item["connected"] = bull
+					
+					var arr = collect_all_buildings_along_the_roadtree(tree)
+#					print(arr)
+					for item in arr:
+						if bull:
+							item["connected"] = bull
+						else:
+							var neighbors = get_neighbors_for_building(item["base"],item["dims"])
+							if check(neighbors):
+								item["connected"] = true
+							else:
+								item["connected"] = false
+							
+				elif is_type_not_road_or_main_hall(n):
+					var item = get_item_from_buildings_data_array_by_position(n)
+					var neighbors = get_neighbors_for_building(item["base"],item["dims"])
+					if check(neighbors):
+						item["connected"] = true
+					else:
+						item["connected"] = bull
+
+func check(neighbors):
+	for n in neighbors:
+		if get_type_from_buildings_data_array(n) == "Road":
+			if is_road_connected_to_MH(n):
+				return true
+	return false
+
 func erase_building(btn_name,dict):
 #	print(dict)
 	if btn_name == "Yes":
 		
 		buildings_data_array.erase(dict)
 		
+		if dict["type"] == "Road":
+			check_and_change_road_tree_after_place_or_erase(dict,false)
+		
+#		if dict["type"] == "Road" and dict["connected"]:
+#			for n in get_neighbors_for_position(dict["base"]):
+#				if get_type_from_buildings_data_array(n) == "Road" and !is_road_connected_to_MH(n):
+#					var tree = get_road_tree(n)
+#					print(tree)
+#					for r in tree:
+#						var item = get_item_from_buildings_data_array_by_position(r)
+#						item["connected"] = false
+		
 		# if road -> 1 - change neighbor roadtrees from base_pos.
 		#     if roadtree == false -> check all buildings along the roadtree, if they
 		#     has connection to MH.
 		# if MH -> 
 		
+
 		for cell in get_atlas_positions_array_from_dims(dict["dims"],dict["base"]):
 			$Buildings.erase_cell(0, cell)
 		file_manager.save_to_file("buildings_data", buildings_data_array)
-		
+		update_map()
 		desactivate_dialog_btns()
 	elif btn_name == "No":
 		desactivate_dialog_btns()
@@ -388,8 +441,8 @@ func get_road_tree(pos):
 
 func recursive_collecting_roads(pos, array):
 	for n in get_neighbors_for_position(pos):
-		if !array.has(n):
-			if get_type_from_buildings_data_array(n) == "Road":
+		if get_type_from_buildings_data_array(n) == "Road":
+			if !array.has(n):
 				array.append(n)
 				recursive_collecting_roads(n, array)
 
@@ -407,6 +460,7 @@ func place_building():
 		var dims = Vector2i(1,1) if build_type == "Road" else Vector2i(2,2)
 		if build_type == "Main_Hall":
 			dims = Vector2i(6,7)
+		
 		var connected
 		if build_type == "Road":
 			connected = is_road_connected_to_MH(build_location)
@@ -434,37 +488,17 @@ func place_building():
 					$Buildings.set_cell(0,cell,BUILDING_TYPE[build_type.to_upper()],Vector2i(0,0)+cell)
 				else:
 					$Buildings.set_cell(0,cell,BUILDING_TYPE[build_type.to_upper()]+2,Vector2i(0,0)+cell)
-		# -3- save changes
+		
+		
+		# if true road -> check if it has now new false road neighbors and change them to true
+		if dict["type"] == "Road":
+			check_and_change_road_tree_after_place_or_erase(dict,true)
+		
 		buildings_data_array.append(dict)
+		# -3- save changes
 		file_manager.save_to_file("buildings_data", buildings_data_array)
 	update_map()
 
-
-
-#func check_and_refresh_new_for_mh(pos,d):
-#	var deep = d
-#	for n in get_neighbors(pos):
-##		if get_atlas_type_for_tile($Buildings,n) == -1:
-##			continue
-##		else:
-#		if get_type_from_buildings_data_array(n) == "Main_Hall":
-#			change_connected(pos,true)
-#			return
-#		elif get_type_from_buildings_data_array(n) == "Road":
-#			check_and_refresh_new_for_mh(n,deep+1)
-#			return
-##		change_connected(n,false)
-
-
-#func refresh_neighbors_connected(pos):
-#	for n in get_neighbors(pos):
-#		if get_type_from_buildings_data_array(n) == "Road":
-#			if get_connected_from_map_data(n):
-#				continue
-#			else:
-#				change_connected(n,true)
-#				refresh_neighbors_connected(n)
-##				return
 
  
 
@@ -472,13 +506,6 @@ func get_index_from_buildings_data_array(pos):
 	for i in buildings_data_array.size():
 		if buildings_data_array[i]["base"] == pos:
 			return i
-
-#func change_connected(pos,b):
-#	print(get_index_from_map_data(pos))
-#	var entry = buildings_data_array.pop_at(get_index_from_map_data(pos))
-##	map_data.remove_at(get_index_from_map_data(pos))
-#	entry["connected"] = b
-#	buildings_data_array.append(entry)
 
 
 func connect_builder_buttons():
