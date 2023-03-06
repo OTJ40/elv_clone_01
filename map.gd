@@ -375,15 +375,18 @@ func erase_building(btn_name,dict):
 		
 		if dict["type"] == "Road":
 			check_and_change_road_tree_after_place_or_erase(dict,false)
+		elif dict["type"] == "Main_Hall":
+			var mh_neighbors = get_neighbors_for_building(dict["base"],dict["dims"])
+			for mh_n in mh_neighbors:
+				if get_type_from_buildings_data_array(mh_n) == "Road":
+					var tree = get_road_tree(mh_n)
+					for r in tree:
+						var item = get_item_from_buildings_data_array_by_position(r)
+						item["connected"] = false
+					var buis = collect_all_buildings_along_the_roadtree(tree)
+					for b in buis:
+						b["connected"] = false
 		
-#		if dict["type"] == "Road" and dict["connected"]:
-#			for n in get_neighbors_for_position(dict["base"]):
-#				if get_type_from_buildings_data_array(n) == "Road" and !is_road_connected_to_MH(n):
-#					var tree = get_road_tree(n)
-#					print(tree)
-#					for r in tree:
-#						var item = get_item_from_buildings_data_array_by_position(r)
-#						item["connected"] = false
 		
 		# if road -> 1 - change neighbor roadtrees from base_pos.
 		#     if roadtree == false -> check all buildings along the roadtree, if they
@@ -493,6 +496,17 @@ func place_building():
 		# if true road -> check if it has now new false road neighbors and change them to true
 		if dict["type"] == "Road":
 			check_and_change_road_tree_after_place_or_erase(dict,true)
+		elif dict["type"] == "Main_Hall":
+			var mh_neighbors = get_neighbors_for_building(dict["base"],dict["dims"])
+			for mh_n in mh_neighbors:
+				if get_type_from_buildings_data_array(mh_n) == "Road":
+					var tree = get_road_tree(mh_n)
+					for r in tree:
+						var item = get_item_from_buildings_data_array_by_position(r)
+						item["connected"] = true
+					var buis = collect_all_buildings_along_the_roadtree(tree)
+					for b in buis:
+						b["connected"] = true
 		
 		buildings_data_array.append(dict)
 		# -3- save changes
